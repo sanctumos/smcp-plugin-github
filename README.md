@@ -282,7 +282,7 @@ pip install pytest pytest-cov pytest-mock pytest-timeout
 
 **Run all unit tests (default):**
 ```bash
-python run_tests.py
+python tests/run_tests.py
 ```
 
 Or using pytest directly:
