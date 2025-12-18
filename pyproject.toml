@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "smcp-plugin-github"
+version = "1.0.0"
+description = "SMCP plugins for GitHub CLI (gh) and Git command-line tools"
+readme = "README.md"
+license = {text = "AGPLv3"}
+authors = [
+    {name = "Mark Rizzn Hopkins", email = "mark@sanctumos.org"}
+]
+maintainers = [
+    {name = "Mark Rizzn Hopkins", email = "mark@sanctumos.org"}
+]
+keywords = ["mcp", "smcp", "github", "git", "plugin", "cli"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Software Development :: Version Control :: Git",
+]
+requires-python = ">=3.8"
+dependencies = []
+
+[project.urls]
+Homepage = "https://sanctumos.org"
+Documentation = "https://github.com/sanctumos/smcp-plugin-github"
+Repository = "https://github.com/sanctumos/smcp-plugin-github"
+Issues = "https://github.com/sanctumos/smcp-plugin-github/issues"
