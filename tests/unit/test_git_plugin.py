@@ -346,6 +346,155 @@ class TestGitRun:
         # Should not add --yes if -y already exists
         assert "--yes" not in cmd_parts
         assert "-y" in cmd_parts
+    
+    @pytest.mark.unit
+    def test_run_error_with_hints_git_repo(self, mock_subprocess_run):
+        """Test error handling with git repository error hints (fixes issue #6)"""
+        mock_subprocess_run.returncode = 1
+        mock_subprocess_run.stdout = ""
+        mock_subprocess_run.stderr = "fatal: not a git repository"
+        
+        result = run({"command": "status"}, dry_run=False)
+        assert result["return_code"] == 1
+        assert "error_hints" in result
+        assert result["error_hints"]["error_type"] == "git_repository_error"
+        assert "suggestions" in result["error_hints"]
+    
+    @pytest.mark.unit
+    def test_run_error_with_hints_reference_error(self, mock_subprocess_run):
+        """Test error handling with reference error hints (fixes issue #6)"""
+        mock_subprocess_run.returncode = 1
+        mock_subprocess_run.stdout = ""
+        mock_subprocess_run.stderr = "fatal: ambiguous argument 'main': unknown revision"
+        
+        result = run({"command": "log", "args": "main"}, dry_run=False)
+        assert result["return_code"] == 1
+        assert "error_hints" in result
+        assert result["error_hints"]["error_type"] == "reference_error"
+    
+    @pytest.mark.unit
+    def test_run_error_with_hints_remote_error(self, mock_subprocess_run):
+        """Test error handling with remote error hints (fixes issue #6)"""
+        mock_subprocess_run.returncode = 1
+        mock_subprocess_run.stdout = ""
+        mock_subprocess_run.stderr = "fatal: could not read from remote repository"
+        
+        result = run({"command": "fetch"}, dry_run=False)
+        assert result["return_code"] == 1
+        assert "error_hints" in result
+        assert result["error_hints"]["error_type"] == "remote_error"
+    
+    @pytest.mark.unit
+    def test_run_error_with_hints_merge_error(self, mock_subprocess_run):
+        """Test error handling with merge error hints (fixes issue #6)"""
+        mock_subprocess_run.returncode = 1
+        mock_subprocess_run.stdout = ""
+        mock_subprocess_run.stderr = "error: merge conflict in file.txt"
+        
+        result = run({"command": "merge", "args": "branch"}, dry_run=False)
+        assert result["return_code"] == 1
+        assert "error_hints" in result
+        assert result["error_hints"]["error_type"] == "merge_error"
+    
+    @pytest.mark.unit
+    def test_run_error_with_hints_permission_error(self, mock_subprocess_run):
+        """Test error handling with permission error hints (fixes issue #6)"""
+        mock_subprocess_run.returncode = 1
+        mock_subprocess_run.stdout = ""
+        mock_subprocess_run.stderr = "permission denied"
+        
+        result = run({"command": "push"}, dry_run=False)
+        assert result["return_code"] == 1
+        assert "error_hints" in result
+        assert result["error_hints"]["error_type"] == "permission_error"
+    
+    @pytest.mark.unit
+    def test_run_error_with_hints_cwd_suggestion(self, mock_subprocess_run, tmp_path):
+        """Test error handling includes cwd in git repo error suggestions (fixes issue #6)"""
+        mock_subprocess_run.returncode = 1
+        mock_subprocess_run.stdout = ""
+        mock_subprocess_run.stderr = "fatal: not a git repository"
+        
+        result = run({"command": "status"}, dry_run=False, cwd=str(tmp_path))
+        assert result["return_code"] == 1
+        assert "error_hints" in result
+        suggestions = result["error_hints"]["suggestions"]
+        assert any("Current directory" in s for s in suggestions)
+    
+    @pytest.mark.unit
+    def test_run_error_with_hints_no_cwd_suggestion(self, mock_subprocess_run):
+        """Test error handling suggests --cwd when cwd is not provided (fixes issue #6)"""
+        mock_subprocess_run.returncode = 1
+        mock_subprocess_run.stdout = ""
+        mock_subprocess_run.stderr = "fatal: not a git repository"
+        
+        result = run({"command": "status"}, dry_run=False, cwd=None)
+        assert result["return_code"] == 1
+        assert "error_hints" in result
+        suggestions = result["error_hints"]["suggestions"]
+        assert any("--cwd" in s for s in suggestions)
+    
+    @pytest.mark.unit
+    def test_run_error_with_context(self, mock_subprocess_run, tmp_path):
+        """Test error handling includes command context (fixes issue #6)"""
+        mock_subprocess_run.returncode = 1
+        mock_subprocess_run.stdout = ""
+        mock_subprocess_run.stderr = ""
+        
+        result = run({"command": "invalid"}, dry_run=False, cwd=str(tmp_path))
+        assert "error" in result
+        assert "command_context" in result
+        assert result["command_context"]["cwd"] == str(tmp_path)
+        assert "invalid" in result["command_context"]["command"]
+        # When there's no output, error response includes return_code
+        assert result["return_code"] == 1
+    
+    @pytest.mark.unit
+    def test_run_timeout_with_context(self, mock_subprocess_timeout):
+        """Test timeout error includes context (fixes issue #6)"""
+        result = run({"command": "status"}, dry_run=False)
+        assert "error" in result
+        assert "error_type" in result
+        assert result["error_type"] == "timeout"
+        assert "suggestion" in result
+        assert "command" in result
+    
+    @pytest.mark.unit
+    def test_run_exception_with_context(self, mock_subprocess_exception, tmp_path):
+        """Test exception error includes context (fixes issue #6)"""
+        result = run({"command": "status"}, dry_run=False, cwd=str(tmp_path))
+        assert "error" in result
+        assert "error_type" in result
+        assert result["error_type"] == "execution_error"
+        assert "command_context" in result
+        assert result["command_context"]["cwd"] == str(tmp_path)
+    
+    @pytest.mark.unit
+    def test_run_error_no_hints_when_stderr_empty(self, mock_subprocess_run):
+        """Test error handling doesn't add hints when stderr is empty (fixes issue #6)"""
+        mock_subprocess_run.returncode = 1
+        mock_subprocess_run.stdout = "some output"  # Has stdout but no stderr
+        mock_subprocess_run.stderr = ""  # Empty stderr
+        
+        result = run({"command": "invalid"}, dry_run=False)
+        assert result["return_code"] == 1
+        # When stderr is empty, no error_hints should be added (but result has output)
+        assert "error_hints" not in result
+        assert "result" in result  # Should have result from stdout
+    
+    @pytest.mark.unit
+    def test_analyze_error_empty_stderr(self):
+        """Test _analyze_error returns None for empty stderr (fixes issue #6)"""
+        from plugins.git.cli import _analyze_error
+        result = _analyze_error("", "test command", None)
+        assert result is None
+    
+    @pytest.mark.unit
+    def test_analyze_error_no_match(self):
+        """Test _analyze_error returns None for unmatched error patterns (fixes issue #6)"""
+        from plugins.git.cli import _analyze_error
+        result = _analyze_error("some random error message", "test command", None)
+        assert result is None
 
 
 class TestGitDescribe:
@@ -628,4 +777,5 @@ class TestGitMain:
         result = run({"command": "status"}, dry_run=False, cwd=str(tmp_path))
         # Verify the result is successful
         assert result["return_code"] == 0
+    
 

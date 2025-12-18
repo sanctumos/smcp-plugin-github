@@ -85,9 +85,12 @@ def run(args: Dict[str, Any], dry_run: bool = False, non_interactive: bool = Fal
             output_parts.append(result.stderr)
         output = '\n'.join(output_parts) if output_parts else ''
         
+        # Build command string for error context (fixes issue #6)
+        command_str = " ".join(cmd_args)
+        
         # Always include both stdout and stderr in response for debugging
         response = {
-            "command": " ".join(cmd_args),
+            "command": command_str,
             "return_code": result.returncode,
             "elapsed": elapsed
         }
@@ -102,23 +105,105 @@ def run(args: Dict[str, Any], dry_run: bool = False, non_interactive: bool = Fal
             response["result"] = output if output else "Command completed successfully"
             return response
         else:
-            # Non-zero return code: still pass through output in "result" field
-            # Only use "error" if there's no output at all
+            # Non-zero return code: enhance error messages with context (fixes issue #6)
             if output:
                 response["result"] = output
+                # Add error analysis for common patterns
+                error_hints = _analyze_error(result.stderr, command_str, cwd)
+                if error_hints:
+                    response["error_hints"] = error_hints
                 return response
             else:
-                response["error"] = f"Command failed with return code {result.returncode} (no output)"
+                # No output but command failed - provide context
+                error_msg = f"Command failed with return code {result.returncode} (no output)"
+                if cwd:
+                    error_msg += f" in directory: {cwd}"
+                response["error"] = error_msg
+                response["return_code"] = result.returncode  # Always include return_code
+                response["command_context"] = {
+                    "command": command_str,
+                    "cwd": cwd,
+                    "args_received": args
+                }
                 return response
         
     except subprocess.TimeoutExpired:
+        command_str = " ".join(cmd_args) if 'cmd_args' in locals() else "git [command]"
         return {
-            "error": "Command timed out after 30 seconds"
+            "error": f"Command timed out after 30 seconds",
+            "command": command_str,
+            "error_type": "timeout",
+            "suggestion": "The command may be waiting for input or taking too long. Try using --non-interactive flag or check network connectivity."
         }
     except Exception as e:
+        command_str = " ".join(cmd_args) if 'cmd_args' in locals() else "git [command]"
         return {
-            "error": f"Command execution failed: {str(e)}"
+            "error": f"Command execution failed: {str(e)}",
+            "command": command_str,
+            "error_type": "execution_error",
+            "command_context": {
+                "args_received": args,
+                "cwd": cwd
+            }
         }
+
+
+def _analyze_error(stderr: str, command: str, cwd: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Analyze stderr for common error patterns and provide helpful hints (fixes issue #6)."""
+    if not stderr:
+        return None
+    
+    hints = {}
+    stderr_lower = stderr.lower()
+    
+    # Git repository errors
+    if "not a git repository" in stderr_lower or "fatal: not a git repository" in stderr_lower:
+        hints["error_type"] = "git_repository_error"
+        suggestions = ["Ensure you're in a git repository directory"]
+        if cwd:
+            suggestions.append(f"Current directory: {cwd}")
+        else:
+            suggestions.append("Consider using --cwd flag to specify the repository directory")
+        hints["suggestions"] = suggestions
+    
+    # Commit/ref errors
+    elif "no commit found" in stderr_lower or "could not resolve" in stderr_lower or "unknown revision" in stderr_lower:
+        hints["error_type"] = "reference_error"
+        hints["suggestions"] = [
+            "Check that the branch, tag, or commit reference exists",
+            "Verify the reference name is correct",
+            "Try 'git branch -a' or 'git tag -l' to list available references"
+        ]
+    
+    # Remote/network errors
+    elif "could not read from remote" in stderr_lower or "failed to push" in stderr_lower:
+        hints["error_type"] = "remote_error"
+        hints["suggestions"] = [
+            "Check network connectivity",
+            "Verify remote URL is correct: 'git remote -v'",
+            "Check authentication for the remote repository"
+        ]
+    
+    # Merge/conflict errors
+    elif "merge conflict" in stderr_lower or "conflicts" in stderr_lower:
+        hints["error_type"] = "merge_error"
+        hints["suggestions"] = [
+            "Resolve merge conflicts in the affected files",
+            "Use 'git status' to see conflicted files",
+            "After resolving, stage files with 'git add' and commit"
+        ]
+    
+    # Permission errors
+    elif "permission denied" in stderr_lower:
+        hints["error_type"] = "permission_error"
+        hints["suggestions"] = [
+            "Check file/directory permissions",
+            "Ensure you have write access to the repository"
+        ]
+    
+    if hints:
+        return hints
+    return None
 
 
 def describe() -> Dict[str, Any]:
