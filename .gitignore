@@ -20,13 +20,16 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual environments
-venv/
-env/
-ENV/
-.venv
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+coverage.xml
+coverage.json
+*.cover
 
-# IDE
+# IDEs
 .vscode/
 .idea/
 *.swp
@@ -37,17 +40,9 @@ ENV/
 .DS_Store
 Thumbs.db
 
-# Logs
-*.log
-logs/
+# Temporary testing
+tmp/
 
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-
-# Temporary files
-*.tmp
-*.bak
-*.swp
+# Issue comment files
+issue-*-comment.md
+issue-*-close.md
