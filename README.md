@@ -213,6 +213,68 @@ smcp-plugin-github/
 - Python 3.8+
 - Standard library only (no external dependencies)
 
+### Testing
+
+The project includes a comprehensive test suite with 100% code coverage.
+
+#### Install Test Dependencies
+
+```bash
+pip install -e ".[test]"
+```
+
+Or install directly:
+
+```bash
+pip install pytest pytest-cov pytest-mock pytest-timeout
+```
+
+#### Run Tests
+
+**Run all unit tests (default):**
+```bash
+python run_tests.py
+```
+
+Or using pytest directly:
+```bash
+pytest tests/ -v --cov=plugins --cov-report=term-missing --cov-fail-under=100
+```
+
+**Run specific test types:**
+```bash
+# Unit tests only
+pytest tests/ -m unit -v
+
+# Integration tests (requires gh/git CLI)
+pytest tests/ -m integration -v
+
+# End-to-end tests (requires gh/git CLI)
+pytest tests/ -m e2e -v
+
+# All tests
+pytest tests/ -v
+```
+
+**Run with coverage report:**
+```bash
+pytest tests/ --cov=plugins --cov-report=html
+# Open htmlcov/index.html in your browser
+```
+
+#### Test Structure
+
+- **Unit Tests** (`tests/unit/`): Test individual functions with mocked subprocess calls
+- **Integration Tests** (`tests/integration/`): Test with real CLI tools (requires `gh`/`git` installed)
+- **E2E Tests** (`tests/e2e/`): Test complete CLI workflows end-to-end
+
+All tests are marked with pytest markers:
+- `@pytest.mark.unit` - Unit tests
+- `@pytest.mark.integration` - Integration tests
+- `@pytest.mark.e2e` - End-to-end tests
+- `@pytest.mark.requires_gh` - Tests requiring GitHub CLI
+- `@pytest.mark.requires_git` - Tests requiring Git CLI
+
 ## License
 
 This project is licensed under the GNU Affero General Public License v3.0 (AGPLv3).
