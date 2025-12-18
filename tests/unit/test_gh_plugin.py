@@ -195,6 +195,72 @@ class TestGhRun:
         result = run({"command": 123}, dry_run=False)
         assert result["return_code"] == 0
         assert "gh 123" in result["command"]
+    
+    @pytest.mark.unit
+    def test_run_with_quoted_multi_word_argument(self, mock_subprocess_run):
+        """Test run with quoted multi-word argument (fixes issue #1)"""
+        mock_subprocess_run.returncode = 0
+        mock_subprocess_run.stdout = "success"
+        mock_subprocess_run.stderr = ""
+        
+        # Test that quoted strings are preserved as single arguments
+        result = run({"command": 'repo edit --description "Python SDK and tools"', "subcommand": None}, dry_run=True)
+        assert result["dry_run"] is True
+        cmd_parts = result["cmd_args"]
+        # Should have: ["gh", "repo", "edit", "--description", "Python SDK and tools"]
+        assert cmd_parts[0] == "gh"
+        assert cmd_parts[1] == "repo"
+        assert cmd_parts[2] == "edit"
+        assert cmd_parts[3] == "--description"
+        assert cmd_parts[4] == "Python SDK and tools"  # Quoted string preserved as single arg
+    
+    @pytest.mark.unit
+    def test_run_with_unquoted_arguments(self, mock_subprocess_run):
+        """Test run with unquoted arguments (backward compatibility)"""
+        mock_subprocess_run.returncode = 0
+        mock_subprocess_run.stdout = "success"
+        mock_subprocess_run.stderr = ""
+        
+        # Test that unquoted arguments still work
+        result = run({"command": "repo list --limit 10"}, dry_run=True)
+        assert result["dry_run"] is True
+        cmd_parts = result["cmd_args"]
+        assert cmd_parts == ["gh", "repo", "list", "--limit", "10"]
+    
+    @pytest.mark.unit
+    def test_run_with_mixed_quoted_unquoted(self, mock_subprocess_run):
+        """Test run with mixed quoted and unquoted arguments"""
+        mock_subprocess_run.returncode = 0
+        mock_subprocess_run.stdout = "success"
+        mock_subprocess_run.stderr = ""
+        
+        # Test mixed scenario
+        result = run({"command": 'repo edit --description "My Project" --homepage https://example.com'}, dry_run=True)
+        assert result["dry_run"] is True
+        cmd_parts = result["cmd_args"]
+        assert "gh" in cmd_parts
+        assert "repo" in cmd_parts
+        assert "edit" in cmd_parts
+        assert "--description" in cmd_parts
+        assert "My Project" in cmd_parts  # Quoted string preserved
+        assert "--homepage" in cmd_parts
+        assert "https://example.com" in cmd_parts
+    
+    @pytest.mark.unit
+    def test_run_with_quoted_subcommand(self, mock_subprocess_run):
+        """Test run with quoted subcommand argument"""
+        mock_subprocess_run.returncode = 0
+        mock_subprocess_run.stdout = "success"
+        mock_subprocess_run.stderr = ""
+        
+        result = run({"command": "repo", "subcommand": 'edit --description "Test Description"'}, dry_run=True)
+        assert result["dry_run"] is True
+        cmd_parts = result["cmd_args"]
+        assert cmd_parts[0] == "gh"
+        assert cmd_parts[1] == "repo"
+        assert cmd_parts[2] == "edit"
+        assert cmd_parts[3] == "--description"
+        assert cmd_parts[4] == "Test Description"  # Quoted string preserved
 
 
 class TestGhDescribe:

@@ -244,6 +244,69 @@ class TestGitRun:
         result = run({"command": "status", "args": ""}, dry_run=False)
         assert result["return_code"] == 0
         assert "git status" in result["command"]
+    
+    @pytest.mark.unit
+    def test_run_with_quoted_multi_word_argument(self, mock_subprocess_run):
+        """Test run with quoted multi-word argument in args (fixes issue #1)"""
+        mock_subprocess_run.returncode = 0
+        mock_subprocess_run.stdout = "success"
+        mock_subprocess_run.stderr = ""
+        
+        # Test that quoted strings are preserved as single arguments
+        result = run({"command": "commit", "args": '-m "Initial commit with message"'}, dry_run=True)
+        assert result["dry_run"] is True
+        cmd_parts = result["cmd_args"]
+        # Should have: ["git", "commit", "-m", "Initial commit with message"]
+        assert cmd_parts[0] == "git"
+        assert cmd_parts[1] == "commit"
+        assert cmd_parts[2] == "-m"
+        assert cmd_parts[3] == "Initial commit with message"  # Quoted string preserved as single arg
+    
+    @pytest.mark.unit
+    def test_run_with_unquoted_args_string(self, mock_subprocess_run):
+        """Test run with unquoted args string (backward compatibility)"""
+        mock_subprocess_run.returncode = 0
+        mock_subprocess_run.stdout = "success"
+        mock_subprocess_run.stderr = ""
+        
+        # Test that unquoted arguments still work
+        result = run({"command": "log", "args": "--oneline -10"}, dry_run=True)
+        assert result["dry_run"] is True
+        cmd_parts = result["cmd_args"]
+        assert cmd_parts == ["git", "log", "--oneline", "-10"]
+    
+    @pytest.mark.unit
+    def test_run_with_mixed_quoted_unquoted_args(self, mock_subprocess_run):
+        """Test run with mixed quoted and unquoted arguments in args"""
+        mock_subprocess_run.returncode = 0
+        mock_subprocess_run.stdout = "success"
+        mock_subprocess_run.stderr = ""
+        
+        # Test mixed scenario
+        result = run({"command": "commit", "args": '-m "My commit message" --author "John Doe <john@example.com>"'}, dry_run=True)
+        assert result["dry_run"] is True
+        cmd_parts = result["cmd_args"]
+        assert "git" in cmd_parts
+        assert "commit" in cmd_parts
+        assert "-m" in cmd_parts
+        assert "My commit message" in cmd_parts  # Quoted string preserved
+        assert "--author" in cmd_parts
+        assert "John Doe <john@example.com>" in cmd_parts  # Quoted string preserved
+    
+    @pytest.mark.unit
+    def test_run_with_quoted_command(self, mock_subprocess_run):
+        """Test run with quoted command argument"""
+        mock_subprocess_run.returncode = 0
+        mock_subprocess_run.stdout = "success"
+        mock_subprocess_run.stderr = ""
+        
+        result = run({"command": 'config user.name "John Doe"'}, dry_run=True)
+        assert result["dry_run"] is True
+        cmd_parts = result["cmd_args"]
+        assert cmd_parts[0] == "git"
+        assert cmd_parts[1] == "config"
+        assert cmd_parts[2] == "user.name"
+        assert cmd_parts[3] == "John Doe"  # Quoted string preserved
 
 
 class TestGitDescribe:
