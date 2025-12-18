@@ -307,6 +307,45 @@ class TestGitRun:
         assert cmd_parts[1] == "config"
         assert cmd_parts[2] == "user.name"
         assert cmd_parts[3] == "John Doe"  # Quoted string preserved
+    
+    @pytest.mark.unit
+    def test_run_with_non_interactive_flag(self, mock_subprocess_run):
+        """Test run with non-interactive flag (fixes issue #2)"""
+        mock_subprocess_run.returncode = 0
+        mock_subprocess_run.stdout = "success"
+        mock_subprocess_run.stderr = ""
+        
+        result = run({"command": "clean", "args": "-fd"}, dry_run=True, non_interactive=True)
+        assert result["dry_run"] is True
+        cmd_parts = result["cmd_args"]
+        assert "--yes" in cmd_parts  # --yes should be automatically added
+    
+    @pytest.mark.unit
+    def test_run_with_non_interactive_and_existing_yes(self, mock_subprocess_run):
+        """Test run with non-interactive flag when --yes already exists"""
+        mock_subprocess_run.returncode = 0
+        mock_subprocess_run.stdout = "success"
+        mock_subprocess_run.stderr = ""
+        
+        result = run({"command": "clean", "args": ["-fd", "--yes"]}, dry_run=True, non_interactive=True)
+        assert result["dry_run"] is True
+        cmd_parts = result["cmd_args"]
+        # Should only have one --yes, not duplicate
+        assert cmd_parts.count("--yes") == 1
+    
+    @pytest.mark.unit
+    def test_run_with_non_interactive_short_flag(self, mock_subprocess_run):
+        """Test run with non-interactive flag when -y already exists"""
+        mock_subprocess_run.returncode = 0
+        mock_subprocess_run.stdout = "success"
+        mock_subprocess_run.stderr = ""
+        
+        result = run({"command": "clean", "args": ["-fd", "-y"]}, dry_run=True, non_interactive=True)
+        assert result["dry_run"] is True
+        cmd_parts = result["cmd_args"]
+        # Should not add --yes if -y already exists
+        assert "--yes" not in cmd_parts
+        assert "-y" in cmd_parts
 
 
 class TestGitDescribe:
@@ -529,4 +568,33 @@ class TestGitMain:
         result = json.loads(captured.out)
         assert "error" in result
         assert "Test exception" in result["error"]
+    
+    @pytest.mark.unit
+    def test_main_run_with_non_interactive(self, capsys, mock_subprocess_run):
+        """Test main with --non-interactive flag"""
+        mock_subprocess_run.returncode = 0
+        mock_subprocess_run.stdout = "success"
+        mock_subprocess_run.stderr = ""
+        
+        # Test that arg_args is properly handled when it's a list
+        # We'll test this by directly calling the code path that handles args
+        with patch("sys.argv", ["cli.py", "run", "--non-interactive", "--command", "clean"]), \
+             patch("argparse.ArgumentParser.parse_args") as mock_parse:
+            mock_args = Mock()
+            mock_args.describe = False
+            mock_args.command = "run"
+            mock_args.dry_run = False
+            mock_args.non_interactive = True
+            mock_args.arg_command = "clean"
+            mock_args.arg_args = ["-fd"]  # This is what argparse returns for nargs="*"
+            mock_parse.return_value = mock_args
+            try:
+                main()
+            except SystemExit as e:
+                assert e.code == 0
+        
+        captured = capsys.readouterr()
+        result = json.loads(captured.out)
+        assert result["return_code"] == 0
+        assert "--yes" in result["command"]
 

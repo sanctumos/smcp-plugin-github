@@ -261,6 +261,45 @@ class TestGhRun:
         assert cmd_parts[2] == "edit"
         assert cmd_parts[3] == "--description"
         assert cmd_parts[4] == "Test Description"  # Quoted string preserved
+    
+    @pytest.mark.unit
+    def test_run_with_non_interactive_flag(self, mock_subprocess_run):
+        """Test run with non-interactive flag (fixes issue #2)"""
+        mock_subprocess_run.returncode = 0
+        mock_subprocess_run.stdout = "success"
+        mock_subprocess_run.stderr = ""
+        
+        result = run({"command": "repo", "subcommand": "rename newname"}, dry_run=True, non_interactive=True)
+        assert result["dry_run"] is True
+        cmd_parts = result["cmd_args"]
+        assert "--yes" in cmd_parts  # --yes should be automatically added
+    
+    @pytest.mark.unit
+    def test_run_with_non_interactive_and_existing_yes(self, mock_subprocess_run):
+        """Test run with non-interactive flag when --yes already exists"""
+        mock_subprocess_run.returncode = 0
+        mock_subprocess_run.stdout = "success"
+        mock_subprocess_run.stderr = ""
+        
+        result = run({"command": "repo", "subcommand": "rename newname --yes"}, dry_run=True, non_interactive=True)
+        assert result["dry_run"] is True
+        cmd_parts = result["cmd_args"]
+        # Should only have one --yes, not duplicate
+        assert cmd_parts.count("--yes") == 1
+    
+    @pytest.mark.unit
+    def test_run_with_non_interactive_short_flag(self, mock_subprocess_run):
+        """Test run with non-interactive flag when -y already exists"""
+        mock_subprocess_run.returncode = 0
+        mock_subprocess_run.stdout = "success"
+        mock_subprocess_run.stderr = ""
+        
+        result = run({"command": "repo", "subcommand": "rename newname -y"}, dry_run=True, non_interactive=True)
+        assert result["dry_run"] is True
+        cmd_parts = result["cmd_args"]
+        # Should not add --yes if -y already exists
+        assert "--yes" not in cmd_parts
+        assert "-y" in cmd_parts
 
 
 class TestGhDescribe:
@@ -471,4 +510,22 @@ class TestGhMain:
         result = json.loads(captured.out)
         assert "error" in result
         assert "Test exception" in result["error"]
+    
+    @pytest.mark.unit
+    def test_main_run_with_non_interactive(self, capsys, mock_subprocess_run):
+        """Test main with --non-interactive flag"""
+        mock_subprocess_run.returncode = 0
+        mock_subprocess_run.stdout = "success"
+        mock_subprocess_run.stderr = ""
+        
+        with patch("sys.argv", ["cli.py", "run", "--non-interactive", "--command", "repo", "--subcommand", "rename newname"]):
+            try:
+                main()
+            except SystemExit as e:
+                assert e.code == 0
+        
+        captured = capsys.readouterr()
+        result = json.loads(captured.out)
+        assert result["return_code"] == 0
+        assert "--yes" in result["command"]
 

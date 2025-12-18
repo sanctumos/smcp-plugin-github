@@ -15,7 +15,7 @@ import time
 from typing import Dict, Any
 
 
-def run(args: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]:
+def run(args: Dict[str, Any], dry_run: bool = False, non_interactive: bool = False) -> Dict[str, Any]:
     """Execute the git command."""
     try:
         # Build command arguments
@@ -39,6 +39,10 @@ def run(args: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]:
                 cmd_args.extend(shlex.split(value))
             else:
                 cmd_args.append(str(value))
+        
+        # Add --yes flag for non-interactive mode (fixes issue #2)
+        if non_interactive and "--yes" not in cmd_args and "-y" not in cmd_args:
+            cmd_args.append("--yes")
         
         # Dry run mode: return what would be executed without running
         if dry_run:
@@ -161,6 +165,7 @@ Examples:
     # Run command
     run_parser = subparsers.add_parser("run", help="Execute git command")
     run_parser.add_argument("--dry-run", action="store_true", dest="dry_run", help="Show what would be executed without running")
+    run_parser.add_argument("--non-interactive", action="store_true", dest="non_interactive", help="Automatically add --yes flag for non-interactive execution")
     pass
     run_parser.add_argument("--command", dest="arg_command", help="COMMAND argument")
     run_parser.add_argument("--args", nargs="*", dest="arg_args", help="ARGS argument (optional)")
@@ -178,8 +183,9 @@ Examples:
     
     try:
         if args.command == "run":
-            # Check for dry-run flag
+            # Check for dry-run and non-interactive flags
             dry_run = getattr(args, 'dry_run', False)
+            non_interactive = getattr(args, 'non_interactive', False)
             
             # Convert argparse args to dict for run function
             run_args = {}
@@ -188,7 +194,7 @@ Examples:
             if hasattr(args, "arg_args") and args.arg_args is not None:
                 run_args["args"] = args.arg_args
             # Always call run, even with no args (to show gh help)
-            result = run(run_args, dry_run=dry_run)
+            result = run(run_args, dry_run=dry_run, non_interactive=non_interactive)
         else:
             result = {"error": f"Unknown command: {args.command}"}
         
