@@ -11,9 +11,10 @@ import os
 
 def main():
     """Run the test suite"""
-    # Ensure we're in the project root
+    # Ensure we're in the project root (one level up from tests/)
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    os.chdir(script_dir)
+    project_root = os.path.dirname(script_dir)
+    os.chdir(project_root)
     
     # Run pytest with coverage
     cmd = [
