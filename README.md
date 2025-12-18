@@ -18,7 +18,12 @@ Both plugins follow the SMCP plugin architecture and can be integrated into any 
 
 - **MCP Protocol Compliant**: Full compatibility with Model Context Protocol specification
 - **SMCP Plugin Format**: Standardized plugin interface for easy integration
-- **Error Handling**: Robust error handling with detailed output capture
+- **Error Handling**: Robust error handling with detailed output capture and pattern recognition
+- **Idempotency Detection**: Automatically detects and handles idempotent operations (e.g., "already closed", "already exists")
+- **Standardized Responses**: Consistent response format with `success` and `error_code` fields for automation
+- **Argument Parsing**: Proper handling of multi-word arguments and quoted strings
+- **Non-Interactive Mode**: Automatic `--yes` flag injection for non-interactive execution
+- **Working Directory Control**: Explicit control over command execution context with `--cwd` flag
 - **Dry Run Support**: Test commands without execution
 - **Timeout Protection**: Commands timeout after 30 seconds to prevent hanging
 
@@ -160,6 +165,50 @@ Returns the plugin description in SMCP format.
 
 **Returns:**
 - Dictionary containing plugin metadata and available commands
+
+## Limitations
+
+This wrapper provides a thin layer over the underlying `gh` and `git` CLI tools. As such, there are some limitations that cannot be addressed at the wrapper level:
+
+### Output Truncation and Large Results
+
+**Issue:** Some commands may have output that is truncated or not properly parsed when results are very large (e.g., long issue lists, large file trees).
+
+**Reason:** Output truncation occurs at the CLI/API level. The wrapper passes through all output from the underlying tools, but if `gh` or `git` truncate output, the wrapper cannot recover the missing data.
+
+**Workaround:** Use pagination flags when available (e.g., `--limit` for `gh` commands) or filter results to reduce output size.
+
+### API Race Conditions and Transient Errors
+
+**Issue:** GitHub API errors (e.g., 502, 422) during operations like repo creation can lead to state mismatches where a repo appears to fail creation but actually exists.
+
+**Reason:** These are API-side race conditions and transient errors that occur at the GitHub API level. The wrapper cannot add atomic "create and confirm" logic without implementing complex retry and state checking logic that would duplicate GitHub CLI functionality.
+
+**Workaround:** The wrapper includes idempotency detection (see Features) which helps handle some "already exists" scenarios. For critical operations, implement retry logic in your automation layer.
+
+### Feature Coverage Limitations
+
+**Issue:** Some GitHub CLI features may not be fully supported or may have limitations (e.g., `--topics` flag behavior, multi-word strings in certain fields).
+
+**Reason:** The wrapper passes commands directly to the underlying `gh` CLI. If a feature is missing or broken in `gh` itself, the wrapper cannot add that functionality.
+
+**Workaround:** Check the [GitHub CLI documentation](https://cli.github.com/manual/) for the latest feature support. Report missing features to the [GitHub CLI project](https://github.com/cli/cli).
+
+### Wrapper Boundaries
+
+The wrapper focuses on:
+- ✅ Argument handling and parsing
+- ✅ Error message enhancement and context
+- ✅ Idempotency detection for common scenarios
+- ✅ Working directory and context management
+- ✅ Non-interactive flag enforcement
+- ✅ Response format standardization
+
+The wrapper cannot:
+- ❌ Add features missing from the underlying CLI tools
+- ❌ Fix API-level race conditions or transient errors
+- ❌ Recover truncated output from CLI/API
+- ❌ Implement complex retry logic beyond basic idempotency detection
 
 ## Response Format
 
