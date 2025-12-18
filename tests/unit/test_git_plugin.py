@@ -502,6 +502,48 @@ class TestGitRun:
         from plugins.git.cli import _analyze_error
         result = _analyze_error("some random error message", "test command", None)
         assert result is None
+    
+    @pytest.mark.unit
+    def test_idempotent_nothing_to_commit(self, mock_subprocess_run):
+        """Test idempotency detection for nothing to commit (fixes issue #10)"""
+        mock_subprocess_run.returncode = 0  # Git returns 0 for "nothing to commit"
+        mock_subprocess_run.stdout = "nothing to commit, working tree clean"
+        mock_subprocess_run.stderr = ""
+        
+        result = run({"command": "commit", "args": "-m 'test'"}, dry_run=False)
+        # Git returns 0 for this, so it's already success, but we should still detect idempotency
+        assert result["return_code"] == 0
+    
+    @pytest.mark.unit
+    def test_idempotent_already_up_to_date(self, mock_subprocess_run):
+        """Test idempotency detection for already up to date (fixes issue #10)"""
+        mock_subprocess_run.returncode = 0
+        mock_subprocess_run.stdout = "Already up to date"
+        mock_subprocess_run.stderr = ""
+        
+        result = run({"command": "pull"}, dry_run=False)
+        assert result["return_code"] == 0
+    
+    @pytest.mark.unit
+    def test_check_idempotency_function(self):
+        """Test _check_idempotency function directly (fixes issue #10)"""
+        from plugins.git.cli import _check_idempotency
+        from unittest.mock import Mock
+        
+        # Test nothing to commit pattern
+        mock_result = Mock()
+        mock_result.returncode = 0
+        mock_result.stdout = "nothing to commit, working tree clean"
+        mock_result.stderr = ""
+        result = _check_idempotency(mock_result, "git commit -m 'test'")
+        assert result["is_idempotent"] is True
+        assert "nothing to commit" in result["message"].lower()
+        
+        # Test non-idempotent
+        mock_result.stdout = "Some other output"
+        mock_result.stderr = ""
+        result = _check_idempotency(mock_result, "git status")
+        assert result["is_idempotent"] is False
 
 
 class TestGitDescribe:

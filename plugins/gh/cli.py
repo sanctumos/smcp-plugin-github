@@ -100,12 +100,19 @@ def run(args: Dict[str, Any], dry_run: bool = False, non_interactive: bool = Fal
         if result.stderr:
             response["stderr"] = result.stderr
         
-        # Standardize response format (fixes issue #9)
-        response["success"] = result.returncode == 0
+        # Check for idempotent scenarios (fixes issue #10)
+        idempotent_info = _check_idempotency(result, command_str)
         
-        if result.returncode == 0:
-            # Success: use "result" field with combined output
-            response["result"] = output if output else "Command completed successfully"
+        # Standardize response format (fixes issue #9)
+        response["success"] = result.returncode == 0 or idempotent_info["is_idempotent"]
+        
+        if result.returncode == 0 or idempotent_info["is_idempotent"]:
+            # Success or idempotent (already in desired state)
+            if idempotent_info["is_idempotent"]:
+                response["idempotent"] = True  # Mark as idempotent operation (fixes issue #10)
+                response["result"] = idempotent_info.get("message", output) if output else "Operation already in desired state"
+            else:
+                response["result"] = output if output else "Command completed successfully"
             return response
         else:
             # Non-zero return code: enhance error messages with context (fixes issue #6, #9)
@@ -154,6 +161,35 @@ def run(args: Dict[str, Any], dry_run: bool = False, non_interactive: bool = Fal
                 "cwd": cwd
             }
         }
+
+
+def _check_idempotency(result: subprocess.CompletedProcess, command: str) -> Dict[str, Any]:
+    """Check if command result represents an idempotent scenario (fixes issue #10)."""
+    # Combine stdout and stderr for analysis
+    output_text = ""
+    if result.stdout:
+        output_text += result.stdout.lower()
+    if result.stderr:
+        output_text += " " + result.stderr.lower()
+    
+    # Common idempotent patterns
+    idempotent_patterns = [
+        ("already closed", "Issue is already closed"),
+        ("already exists", "Resource already exists"),
+        ("already open", "Issue is already open"),
+        ("no changes", "No changes to apply"),
+        ("nothing to", "Nothing to do"),
+    ]
+    
+    for pattern, message in idempotent_patterns:
+        if pattern in output_text:
+            return {
+                "is_idempotent": True,
+                "message": message,
+                "pattern": pattern
+            }
+    
+    return {"is_idempotent": False}
 
 
 def _analyze_error(stderr: str, command: str, cwd: Optional[str] = None) -> Optional[Dict[str, Any]]:

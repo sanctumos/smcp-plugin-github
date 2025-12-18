@@ -474,6 +474,63 @@ class TestGhRun:
         assert result is None
     
     @pytest.mark.unit
+    def test_idempotent_already_closed(self, mock_subprocess_run):
+        """Test idempotency detection for already closed issue (fixes issue #10)"""
+        mock_subprocess_run.returncode = 1
+        mock_subprocess_run.stdout = ""
+        mock_subprocess_run.stderr = "Issue is already closed"
+        
+        result = run({"command": "issue", "subcommand": "close 123"}, dry_run=False)
+        # Should treat as success due to idempotency
+        assert result["success"] is True
+        assert result["idempotent"] is True
+    
+    @pytest.mark.unit
+    def test_idempotent_already_exists(self, mock_subprocess_run):
+        """Test idempotency detection for already exists scenario (fixes issue #10)"""
+        mock_subprocess_run.returncode = 1
+        mock_subprocess_run.stdout = "Repository already exists"
+        mock_subprocess_run.stderr = ""
+        
+        result = run({"command": "repo", "subcommand": "create test"}, dry_run=False)
+        # Should treat as success due to idempotency
+        assert result["success"] is True
+        assert result["idempotent"] is True
+    
+    @pytest.mark.unit
+    def test_idempotent_no_changes(self, mock_subprocess_run):
+        """Test idempotency detection for no changes scenario (fixes issue #10)"""
+        mock_subprocess_run.returncode = 1
+        mock_subprocess_run.stdout = "No changes to apply"
+        mock_subprocess_run.stderr = ""
+        
+        result = run({"command": "repo", "subcommand": "edit"}, dry_run=False)
+        # Should treat as success due to idempotency
+        assert result["success"] is True
+        assert result["idempotent"] is True
+    
+    @pytest.mark.unit
+    def test_check_idempotency_function(self):
+        """Test _check_idempotency function directly (fixes issue #10)"""
+        from plugins.gh.cli import _check_idempotency
+        from unittest.mock import Mock
+        
+        # Test already closed pattern
+        mock_result = Mock()
+        mock_result.returncode = 1
+        mock_result.stdout = "Issue is already closed"
+        mock_result.stderr = ""
+        result = _check_idempotency(mock_result, "gh issue close 123")
+        assert result["is_idempotent"] is True
+        assert "already closed" in result["message"].lower()
+        
+        # Test non-idempotent
+        mock_result.stdout = "Some other error"
+        mock_result.stderr = ""
+        result = _check_idempotency(mock_result, "gh issue close 123")
+        assert result["is_idempotent"] is False
+    
+    @pytest.mark.unit
     def test_run_error_with_context(self, mock_subprocess_run, tmp_path):
         """Test error handling includes command context (fixes issue #6)"""
         mock_subprocess_run.returncode = 1
