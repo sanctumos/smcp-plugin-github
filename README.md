@@ -1,0 +1,1 @@
+# smcp-plugin-github
