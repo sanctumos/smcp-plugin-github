@@ -263,6 +263,51 @@ class TestGhRun:
         assert cmd_parts[4] == "Test Description"  # Quoted string preserved
     
     @pytest.mark.unit
+    def test_run_with_comment_body_argument(self, mock_subprocess_run):
+        """Test run with comment body argument (fixes issue #4)"""
+        mock_subprocess_run.returncode = 0
+        mock_subprocess_run.stdout = "success"
+        mock_subprocess_run.stderr = ""
+        
+        # Test multi-word body argument
+        result = run({"command": "issue", "subcommand": 'comment 123 --body "This is a multi-word comment"'}, dry_run=True)
+        assert result["dry_run"] is True
+        cmd_parts = result["cmd_args"]
+        assert "--body" in cmd_parts
+        body_idx = cmd_parts.index("--body")
+        assert cmd_parts[body_idx + 1] == "This is a multi-word comment"  # Preserved as single argument
+    
+    @pytest.mark.unit
+    def test_run_with_multiline_body_argument(self, mock_subprocess_run):
+        """Test run with multi-line body argument (fixes issue #4)"""
+        mock_subprocess_run.returncode = 0
+        mock_subprocess_run.stdout = "success"
+        mock_subprocess_run.stderr = ""
+        
+        # Test multi-line body argument
+        multiline_body = "Line 1\nLine 2\nLine 3"
+        result = run({"command": "issue", "subcommand": f'comment 123 --body "{multiline_body}"'}, dry_run=True)
+        assert result["dry_run"] is True
+        cmd_parts = result["cmd_args"]
+        assert "--body" in cmd_parts
+        body_idx = cmd_parts.index("--body")
+        assert "\n" in cmd_parts[body_idx + 1]  # Newlines preserved
+    
+    @pytest.mark.unit
+    def test_run_with_body_file_flag(self, mock_subprocess_run):
+        """Test run with --body-file flag (fixes issue #4)"""
+        mock_subprocess_run.returncode = 0
+        mock_subprocess_run.stdout = "success"
+        mock_subprocess_run.stderr = ""
+        
+        # Test --body-file flag passes through correctly
+        result = run({"command": "issue", "subcommand": "comment 123 --body-file comment.txt"}, dry_run=True)
+        assert result["dry_run"] is True
+        cmd_parts = result["cmd_args"]
+        assert "--body-file" in cmd_parts
+        assert "comment.txt" in cmd_parts
+    
+    @pytest.mark.unit
     def test_run_with_non_interactive_flag(self, mock_subprocess_run):
         """Test run with non-interactive flag (fixes issue #2)"""
         mock_subprocess_run.returncode = 0
