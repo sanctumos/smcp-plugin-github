@@ -490,9 +490,11 @@ class TestGhRun:
     
     @pytest.mark.unit
     def test_run_timeout_with_context(self, mock_subprocess_timeout):
-        """Test timeout error includes context (fixes issue #6)"""
+        """Test timeout error includes context (fixes issue #6, #9)"""
         result = run({"command": "repo", "subcommand": "list"}, dry_run=False)
         assert "error" in result
+        assert result["success"] is False  # Standardized success field (fixes issue #9)
+        assert result["error_code"] == "TIMEOUT"  # Structured error code (fixes issue #9)
         assert "error_type" in result
         assert result["error_type"] == "timeout"
         assert "suggestion" in result
@@ -500,9 +502,11 @@ class TestGhRun:
     
     @pytest.mark.unit
     def test_run_exception_with_context(self, mock_subprocess_exception, tmp_path):
-        """Test exception error includes context (fixes issue #6)"""
+        """Test exception error includes context (fixes issue #6, #9)"""
         result = run({"command": "repo"}, dry_run=False, cwd=str(tmp_path))
         assert "error" in result
+        assert result["success"] is False  # Standardized success field (fixes issue #9)
+        assert result["error_code"] == "EXECUTION_ERROR"  # Structured error code (fixes issue #9)
         assert "error_type" in result
         assert result["error_type"] == "execution_error"
         assert "command_context" in result
@@ -749,9 +753,11 @@ class TestGhMain:
     
     @pytest.mark.unit
     def test_run_with_invalid_cwd(self):
-        """Test run with invalid cwd directory"""
+        """Test run with invalid cwd directory (fixes issue #9)"""
         result = run({"command": "repo", "subcommand": "list"}, dry_run=False, cwd="/nonexistent/directory/12345")
         assert "error" in result
+        assert result["success"] is False  # Standardized success field (fixes issue #9)
+        assert result["error_code"] == "INVALID_CWD"  # Structured error code (fixes issue #9)
         assert "does not exist" in result["error"]
     
     @pytest.mark.unit

@@ -19,11 +19,13 @@ from typing import Dict, Any, Optional
 def run(args: Dict[str, Any], dry_run: bool = False, non_interactive: bool = False, cwd: Optional[str] = None) -> Dict[str, Any]:
     """Execute the gh command."""
     try:
-        # Validate working directory if specified (fixes issue #3)
+        # Validate working directory if specified (fixes issue #3, #9)
         if cwd is not None:
             if not os.path.isdir(cwd):
                 return {
-                    "error": f"Working directory does not exist: {cwd}"
+                    "success": False,
+                    "error": f"Working directory does not exist: {cwd}",
+                    "error_code": "INVALID_CWD"
                 }
             cwd = os.path.abspath(cwd)
         
@@ -98,12 +100,16 @@ def run(args: Dict[str, Any], dry_run: bool = False, non_interactive: bool = Fal
         if result.stderr:
             response["stderr"] = result.stderr
         
+        # Standardize response format (fixes issue #9)
+        response["success"] = result.returncode == 0
+        
         if result.returncode == 0:
             # Success: use "result" field with combined output
             response["result"] = output if output else "Command completed successfully"
             return response
         else:
-            # Non-zero return code: enhance error messages with context (fixes issue #6)
+            # Non-zero return code: enhance error messages with context (fixes issue #6, #9)
+            response["error_code"] = f"COMMAND_FAILED_{result.returncode}"  # Structured error code for automation
             if output:
                 response["result"] = output
                 # Add error analysis for common patterns
@@ -128,7 +134,9 @@ def run(args: Dict[str, Any], dry_run: bool = False, non_interactive: bool = Fal
     except subprocess.TimeoutExpired:
         command_str = " ".join(cmd_args) if 'cmd_args' in locals() else "gh [command]"
         return {
+            "success": False,
             "error": f"Command timed out after 30 seconds",
+            "error_code": "TIMEOUT",
             "command": command_str,
             "error_type": "timeout",
             "suggestion": "The command may be waiting for input or taking too long. Try using --non-interactive flag or check network connectivity."
@@ -136,7 +144,9 @@ def run(args: Dict[str, Any], dry_run: bool = False, non_interactive: bool = Fal
     except Exception as e:
         command_str = " ".join(cmd_args) if 'cmd_args' in locals() else "gh [command]"
         return {
+            "success": False,
             "error": f"Command execution failed: {str(e)}",
+            "error_code": "EXECUTION_ERROR",
             "command": command_str,
             "error_type": "execution_error",
             "command_context": {
