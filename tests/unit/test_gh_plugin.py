@@ -406,6 +406,61 @@ class TestGhRun:
         assert "--body" not in cmd_parts
     
     @pytest.mark.unit
+    def test_run_with_escaped_newlines_in_body(self, mock_subprocess_run):
+        """Test that literal \\n escape sequences are converted to actual newlines (fixes issue #12)"""
+        mock_subprocess_run.returncode = 0
+        mock_subprocess_run.stdout = "success"
+        mock_subprocess_run.stderr = ""
+        
+        # Body content with literal \n escape sequences (as would come from JSON/API)
+        body_with_escapes = "Line 1\\nLine 2\\nLine 3"
+        result = run({"command": "issue", "subcommand": f'create --title "Test" --body "{body_with_escapes}"'}, dry_run=True)
+        assert result["dry_run"] is True
+        cmd_parts = result["cmd_args"]
+        assert "--body-file" in cmd_parts
+        body_file_idx = cmd_parts.index("--body-file")
+        temp_file_path = cmd_parts[body_file_idx + 1]
+        
+        # Verify temp file contains actual newlines, not literal \n
+        assert os.path.exists(temp_file_path)
+        with open(temp_file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+            # Should have actual newlines, not literal \n
+            assert "\n" in content
+            assert "\\n" not in content  # No literal backslash-n
+            assert content == "Line 1\nLine 2\nLine 3"
+        
+        # Clean up
+        os.remove(temp_file_path)
+    
+    @pytest.mark.unit
+    def test_run_with_mixed_escaped_and_actual_newlines(self, mock_subprocess_run):
+        """Test handling of content with both escaped and actual newlines (fixes issue #12)"""
+        mock_subprocess_run.returncode = 0
+        mock_subprocess_run.stdout = "success"
+        mock_subprocess_run.stderr = ""
+        
+        # Mix of actual newlines and escaped ones (edge case)
+        mixed_body = "Line 1\nLine 2\\nLine 3"
+        result = run({"command": "issue", "subcommand": f'create --title "Test" --body "{mixed_body}"'}, dry_run=True)
+        assert result["dry_run"] is True
+        cmd_parts = result["cmd_args"]
+        assert "--body-file" in cmd_parts
+        body_file_idx = cmd_parts.index("--body-file")
+        temp_file_path = cmd_parts[body_file_idx + 1]
+        
+        # Verify temp file - escaped \n should become actual newline
+        assert os.path.exists(temp_file_path)
+        with open(temp_file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+            # Should have actual newlines
+            lines = content.split("\n")
+            assert len(lines) == 3  # Should be 3 lines after conversion
+        
+        # Clean up
+        os.remove(temp_file_path)
+    
+    @pytest.mark.unit
     def test_run_with_non_interactive_flag(self, mock_subprocess_run):
         """Test run with non-interactive flag (fixes issue #2)"""
         mock_subprocess_run.returncode = 0

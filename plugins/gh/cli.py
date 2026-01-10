@@ -211,6 +211,19 @@ def _handle_body_arguments(cmd_args: List[str], cwd: Optional[str] = None, dry_r
             if i + 1 < len(cmd_args):
                 body_content = cmd_args[i + 1]
                 
+                # Decode escape sequences (e.g., \n, \t) to actual characters (fixes issue #12)
+                # This handles cases where content comes in with literal \n instead of actual newlines
+                # We need to distinguish between literal "\n" (two chars) and actual newlines
+                # Process in order: handle escaped backslashes first, then other escape sequences
+                if "\\" in body_content:
+                    # First, handle escaped backslashes (\\\\ -> \\) to avoid double-processing
+                    # Then handle other escape sequences
+                    body_content = body_content.replace("\\\\", "\x00")  # Temporary marker
+                    body_content = body_content.replace("\\n", "\n")
+                    body_content = body_content.replace("\\t", "\t")
+                    body_content = body_content.replace("\\r", "\r")
+                    body_content = body_content.replace("\x00", "\\")  # Restore escaped backslashes
+                
                 # Check if content contains newlines or complex markdown that needs file handling
                 # This includes: newlines, code blocks (```), headers (#), lists (-, *), etc.
                 needs_file = (
@@ -229,7 +242,7 @@ def _handle_body_arguments(cmd_args: List[str], cwd: Optional[str] = None, dry_r
                         temp_fd, temp_path = tempfile.mkstemp(suffix=".md", prefix="gh_body_", text=True)
                         
                         try:
-                            # Write content to temp file
+                            # Write content to temp file (now with properly decoded newlines)
                             with os.fdopen(temp_fd, 'w', encoding='utf-8') as f:
                                 f.write(body_content)
                             
