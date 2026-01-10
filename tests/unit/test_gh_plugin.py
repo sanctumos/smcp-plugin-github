@@ -279,19 +279,28 @@ class TestGhRun:
     
     @pytest.mark.unit
     def test_run_with_multiline_body_argument(self, mock_subprocess_run):
-        """Test run with multi-line body argument (fixes issue #4)"""
+        """Test run with multi-line body argument converts to --body-file (fixes issue #12)"""
         mock_subprocess_run.returncode = 0
         mock_subprocess_run.stdout = "success"
         mock_subprocess_run.stderr = ""
         
-        # Test multi-line body argument
+        # Test multi-line body argument - should be converted to --body-file
         multiline_body = "Line 1\nLine 2\nLine 3"
         result = run({"command": "issue", "subcommand": f'comment 123 --body "{multiline_body}"'}, dry_run=True)
         assert result["dry_run"] is True
         cmd_parts = result["cmd_args"]
-        assert "--body" in cmd_parts
-        body_idx = cmd_parts.index("--body")
-        assert "\n" in cmd_parts[body_idx + 1]  # Newlines preserved
+        # Multi-line content should be converted to --body-file
+        assert "--body-file" in cmd_parts
+        assert "--body" not in cmd_parts  # Original --body should be replaced
+        body_file_idx = cmd_parts.index("--body-file")
+        temp_file_path = cmd_parts[body_file_idx + 1]
+        assert temp_file_path.endswith(".md")  # Should be a temp .md file
+        # Verify temp file was created and contains the content
+        assert os.path.exists(temp_file_path)
+        with open(temp_file_path, 'r', encoding='utf-8') as f:
+            assert f.read() == multiline_body
+        # Clean up
+        os.remove(temp_file_path)
     
     @pytest.mark.unit
     def test_run_with_body_file_flag(self, mock_subprocess_run):
@@ -306,6 +315,95 @@ class TestGhRun:
         cmd_parts = result["cmd_args"]
         assert "--body-file" in cmd_parts
         assert "comment.txt" in cmd_parts
+    
+    @pytest.mark.unit
+    def test_run_with_markdown_code_blocks_converts_to_body_file(self, mock_subprocess_run):
+        """Test that --body with code blocks converts to --body-file (fixes issue #12)"""
+        mock_subprocess_run.returncode = 0
+        mock_subprocess_run.stdout = "success"
+        mock_subprocess_run.stderr = ""
+        
+        markdown_body = "Here's some code:\n```python\nprint('hello')\n```"
+        result = run({"command": "issue", "subcommand": f'create --title "Test" --body "{markdown_body}"'}, dry_run=True)
+        assert result["dry_run"] is True
+        cmd_parts = result["cmd_args"]
+        assert "--body-file" in cmd_parts
+        assert "--body" not in cmd_parts
+    
+    @pytest.mark.unit
+    def test_run_with_markdown_headers_converts_to_body_file(self, mock_subprocess_run):
+        """Test that --body with headers converts to --body-file (fixes issue #12)"""
+        mock_subprocess_run.returncode = 0
+        mock_subprocess_run.stdout = "success"
+        mock_subprocess_run.stderr = ""
+        
+        markdown_body = "# Header\n## Subheader\nSome text"
+        result = run({"command": "issue", "subcommand": f'create --title "Test" --body "{markdown_body}"'}, dry_run=True)
+        assert result["dry_run"] is True
+        cmd_parts = result["cmd_args"]
+        assert "--body-file" in cmd_parts
+        assert "--body" not in cmd_parts
+    
+    @pytest.mark.unit
+    def test_run_with_single_line_body_not_converted(self, mock_subprocess_run):
+        """Test that single-line --body is not converted to --body-file (fixes issue #12)"""
+        mock_subprocess_run.returncode = 0
+        mock_subprocess_run.stdout = "success"
+        mock_subprocess_run.stderr = ""
+        
+        # Single line without newlines should remain as --body
+        single_line_body = "This is a single line body"
+        result = run({"command": "issue", "subcommand": f'create --title "Test" --body "{single_line_body}"'}, dry_run=True)
+        assert result["dry_run"] is True
+        cmd_parts = result["cmd_args"]
+        assert "--body" in cmd_parts
+        body_idx = cmd_parts.index("--body")
+        assert cmd_parts[body_idx + 1] == single_line_body
+    
+    @pytest.mark.unit
+    def test_run_with_body_temp_file_cleanup(self, mock_subprocess_run):
+        """Test that temp files are cleaned up after execution (fixes issue #12)"""
+        mock_subprocess_run.returncode = 0
+        mock_subprocess_run.stdout = "success"
+        mock_subprocess_run.stderr = ""
+        
+        multiline_body = "Line 1\nLine 2\nLine 3"
+        
+        # Run actual execution (not dry run) - this should create and clean up a temp file
+        result = run({"command": "issue", "subcommand": f'create --title "Test" --body "{multiline_body}"'}, dry_run=False)
+        
+        # Extract temp file path from command args that were executed
+        # The command should use --body-file with a temp file
+        cmd_parts = result.get("cmd_args", [])
+        if "--body-file" in cmd_parts:
+            body_file_idx = cmd_parts.index("--body-file")
+            temp_file_path = cmd_parts[body_file_idx + 1]
+            # Temp file should be cleaned up after execution
+            assert not os.path.exists(temp_file_path), f"Temp file {temp_file_path} should be cleaned up"
+        
+        # Also verify that dry run temp files are NOT cleaned up (for testing)
+        dry_result = run({"command": "issue", "subcommand": f'create --title "Test" --body "{multiline_body}"'}, dry_run=True)
+        if "temp_files" in dry_result:
+            for temp_file in dry_result["temp_files"]:
+                # Dry run temp files should still exist (not cleaned up)
+                assert os.path.exists(temp_file), f"Dry run temp file {temp_file} should exist for test verification"
+                # Clean up manually
+                os.remove(temp_file)
+    
+    @pytest.mark.unit
+    def test_run_with_short_body_flag(self, mock_subprocess_run):
+        """Test that -b flag (short form) is also handled (fixes issue #12)"""
+        mock_subprocess_run.returncode = 0
+        mock_subprocess_run.stdout = "success"
+        mock_subprocess_run.stderr = ""
+        
+        multiline_body = "Line 1\nLine 2\nLine 3"
+        result = run({"command": "issue", "subcommand": f'create --title "Test" -b "{multiline_body}"'}, dry_run=True)
+        assert result["dry_run"] is True
+        cmd_parts = result["cmd_args"]
+        assert "--body-file" in cmd_parts
+        assert "-b" not in cmd_parts
+        assert "--body" not in cmd_parts
     
     @pytest.mark.unit
     def test_run_with_non_interactive_flag(self, mock_subprocess_run):

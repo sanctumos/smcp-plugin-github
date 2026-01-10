@@ -12,12 +12,14 @@ import os
 import shlex
 import subprocess
 import sys
+import tempfile
 import time
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List, Tuple
 
 
 def run(args: Dict[str, Any], dry_run: bool = False, non_interactive: bool = False, cwd: Optional[str] = None) -> Dict[str, Any]:
     """Execute the gh command."""
+    temp_files = []  # Track temp files for cleanup (fixes issue #12)
     try:
         # Validate working directory if specified (fixes issue #3, #9)
         if cwd is not None:
@@ -49,19 +51,31 @@ def run(args: Dict[str, Any], dry_run: bool = False, non_interactive: bool = Fal
             else:
                 cmd_args.append(str(value))
         
+        # Handle --body arguments with multi-line markdown content (fixes issue #12)
+        # Convert --body with newlines to --body-file to preserve markdown formatting
+        cmd_args, temp_files = _handle_body_arguments(cmd_args, cwd, dry_run)
+        
         # Add --yes flag for non-interactive mode (fixes issue #2)
         if non_interactive and "--yes" not in cmd_args and "-y" not in cmd_args:
             cmd_args.append("--yes")
         
         # Dry run mode: return what would be executed without running
         if dry_run:
-            return {
+            result = {
                 "dry_run": True,
                 "command": " ".join(cmd_args),
                 "cmd_args": cmd_args,
                 "args_received": args,
                 "cwd": cwd
             }
+            # Include temp file info in dry run if any were created
+            # Note: In dry_run mode, temp files are NOT cleaned up so tests can verify them
+            if temp_files:
+                result["temp_files"] = temp_files
+            # Clear temp_files list so finally block doesn't clean them up in dry_run
+            temp_files_for_cleanup = temp_files
+            temp_files = []
+            return result
         
         # Execute command
         start_time = time.time()
@@ -91,6 +105,7 @@ def run(args: Dict[str, Any], dry_run: bool = False, non_interactive: bool = Fal
         # Always include both stdout and stderr in response for debugging
         response = {
             "command": command_str,
+            "cmd_args": cmd_args,  # Include for debugging and testing (fixes issue #12)
             "return_code": result.returncode,
             "elapsed": elapsed
         }
@@ -161,6 +176,92 @@ def run(args: Dict[str, Any], dry_run: bool = False, non_interactive: bool = Fal
                 "cwd": cwd
             }
         }
+    finally:
+        # Clean up temp files (fixes issue #12)
+        # Only clean up if not in dry_run mode (dry_run temp files are left for test verification)
+        if not dry_run:
+            for temp_file in temp_files:
+                try:
+                    if os.path.exists(temp_file):
+                        os.remove(temp_file)
+                except Exception:
+                    pass  # Ignore cleanup errors
+
+
+def _handle_body_arguments(cmd_args: List[str], cwd: Optional[str] = None, dry_run: bool = False) -> Tuple[List[str], List[str]]:
+    """
+    Handle --body arguments with multi-line markdown content by converting to --body-file.
+    
+    This fixes issue #12 by preserving markdown formatting (newlines, headers, code blocks, etc.)
+    that would otherwise be lost or escaped when passed as command-line arguments.
+    
+    Returns:
+        Tuple of (modified_cmd_args, list_of_temp_files_created)
+    """
+    temp_files = []
+    
+    # Find --body or -b arguments
+    i = 0
+    while i < len(cmd_args):
+        arg = cmd_args[i]
+        
+        # Check for --body or -b flag
+        if arg in ("--body", "-b"):
+            # Get the body content (next argument)
+            if i + 1 < len(cmd_args):
+                body_content = cmd_args[i + 1]
+                
+                # Check if content contains newlines or complex markdown that needs file handling
+                # This includes: newlines, code blocks (```), headers (#), lists (-, *), etc.
+                needs_file = (
+                    "\n" in body_content or
+                    "```" in body_content or
+                    body_content.strip().startswith("#") or
+                    body_content.strip().startswith("-") or
+                    body_content.strip().startswith("*") or
+                    len(body_content) > 500  # Large content benefits from file handling
+                )
+                
+                if needs_file:
+                    try:
+                        # Create temporary file with markdown content
+                        # Use delete=False so we can control cleanup
+                        temp_fd, temp_path = tempfile.mkstemp(suffix=".md", prefix="gh_body_", text=True)
+                        
+                        try:
+                            # Write content to temp file
+                            with os.fdopen(temp_fd, 'w', encoding='utf-8') as f:
+                                f.write(body_content)
+                            
+                            # Replace --body "content" with --body-file /path/to/temp/file
+                            # Remove the old --body flag and its value
+                            cmd_args.pop(i)  # Remove --body or -b
+                            cmd_args.pop(i)  # Remove the body content
+                            
+                            # Insert --body-file and temp file path
+                            cmd_args.insert(i, "--body-file")
+                            cmd_args.insert(i + 1, temp_path)
+                            
+                            temp_files.append(temp_path)
+                            
+                            # Don't increment i since we've already handled this position
+                            continue
+                        except Exception:
+                            # If writing fails, close the file descriptor and remove the file
+                            try:
+                                os.close(temp_fd)
+                                if os.path.exists(temp_path):
+                                    os.remove(temp_path)
+                            except Exception:
+                                pass
+                            # Fall through to keep original --body argument
+                    except Exception:
+                        # If temp file creation fails, keep original --body argument
+                        pass
+        
+        i += 1
+    
+    return cmd_args, temp_files
 
 
 def _check_idempotency(result: subprocess.CompletedProcess, command: str) -> Dict[str, Any]:
