@@ -255,6 +255,7 @@ def _analyze_error(stderr: str, command: str, cwd: Optional[str] = None) -> Opti
 def describe() -> Dict[str, Any]:
     """Return plugin description in SMCP format."""
     return {
+        "contract_version": "1.0",
         "plugin": {
             "name": "git",
             "version": "1.0.0",
